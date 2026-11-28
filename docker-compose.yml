@@ -1,0 +1,49 @@
+services:
+  db:
+    image: mysql:8.0
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-power}
+      MYSQL_USER: ${MYSQL_USER:-power}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD}
+    volumes:
+      - db_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h localhost -uroot -p$$MYSQL_ROOT_PASSWORD --silent"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+
+  ai:
+    build: ./ai
+    image: ${REGISTRY:-local}/power-ai:${TAG:-latest}
+    restart: unless-stopped
+    volumes:
+      - ai_models:/app/models
+
+  backend:
+    build: ./backend
+    image: ${REGISTRY:-local}/power-backend:${TAG:-latest}
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: mysql+pymysql://${MYSQL_USER:-power}:${MYSQL_PASSWORD}@db:3306/${MYSQL_DATABASE:-power}
+      AI_URL: http://ai:8001
+    depends_on:
+      db:
+        condition: service_healthy
+      ai:
+        condition: service_started
+
+  frontend:
+    build: ./frontend
+    image: ${REGISTRY:-local}/power-frontend:${TAG:-latest}
+    restart: unless-stopped
+    ports:
+      - "${APP_PORT:-80}:80"
+    depends_on:
+      - backend
+
+volumes:
+  db_data:
+  ai_models:
